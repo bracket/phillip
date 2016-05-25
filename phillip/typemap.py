@@ -22,11 +22,10 @@ def get_c_type_info():
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        source = generate_sizeof_program()
         source_path = os.path.join(str(tmpdir), 'sizeof.c')
 
         with open(source_path, 'w') as out:
-            out.write(source)
+            generate_sizeof_program(out)
 
         so_path = build_so('__test__.sizeof', str(tmpdir), [ source_path ])
         lib = ctypes.cdll.LoadLibrary(so_path)
@@ -95,8 +94,8 @@ def ctype_to_numpy():
     }
 
 
-def generate_sizeof_program():
-    from phillip.generate import split_and_dedent_lines, render_indents, IndentLines, replace_re
+def generate_sizeof_program(fd):
+    from phillip.generate import split_and_dedent_lines, render_indents, transform_lines
 
     c_types = get_raw_c_types()
 
@@ -135,20 +134,12 @@ def generate_sizeof_program():
             numeric_type=c_type.numeric_type, comma=comma
         )
 
-    replace_map = {
+    replacement_map = {
         'SIZEOF_STATEMENTS' : 
             [ format_sizeof(p) for p in enumerate(sorted(c_types)) ]
     }
 
-    def replace_line(line):
-        m = replace_re.match(line)
-        if not m:
-            return line
-        else:
-            indent, identifier = map(m.group, ('indent', 'identifier'))
-            return IndentLines(indent, replace_map[identifier])
-
-    return render_indents(map(replace_line, source))
+    render_indents(fd, transform_lines(source, replacement_map))
 
 
 @memoize

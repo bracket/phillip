@@ -1,8 +1,8 @@
+from collections import namedtuple
 import itertools
 import operator
 import os
 import re
-from collections import namedtuple
 
 space_re = re.compile(r'\s*')
 
@@ -24,26 +24,8 @@ def split_and_dedent_lines(text):
 
 IndentLines = namedtuple('IndentLines', 'indent lines')
 
-def make_replace_grammar():
-    g = { }
-
-    g['indent']     = r'(?P<indent>\s*)'
-    g['identifier'] = r'(?P<identifier>[a-zA-Z_][a-zA-Z0-9_]*)'
-    g['replace']    = r'{g[indent]}{{{g[identifier]}}}'.format(g=g)
-
-    for k, r in g.items():
-        g[k] = re.compile(r)
-
-    return g
-
-replace_re = make_replace_grammar()['replace']
-
-def render_indents(lines, indent=None, fd=None):
+def render_indents(fd, lines, indent=None):
     nl = os.linesep
-
-    if fd is None:
-        import io
-        fd = io.StringIO()
 
     if indent is None:
         indent = ''
@@ -54,8 +36,37 @@ def render_indents(lines, indent=None, fd=None):
             fd.write(line)
             fd.write(nl)
         elif isinstance(line, IndentLines):
-            render_indents(line.lines, indent + line.indent, fd)
+            render_indents(fd, line.lines, indent + line.indent)
         else:
-            render_indents(line, indent + '    ', fd)
+            render_indents(fd, line, indent)
 
-    return fd.getvalue()
+def make_replace_grammar():
+    g = { }
+
+    g['indent']      = r'(?P<indent>\s*)'
+    g['replace_key'] = r'(?P<replace_key>[a-zA-Z_][a-zA-Z0-9_]*)'
+    g['replace']     = r'{g[indent]}{{{g[replace_key]}}}'.format(g=g)
+
+    for k, r in g.items():
+        g[k] = re.compile(r)
+
+    return g
+
+replace_re = make_replace_grammar()['replace']
+
+def transform_lines(lines, replacement_map, replace_re=replace_re):
+    def replace_line(line):
+        m = replace_re.match(line)
+
+        if not m:
+            return line
+        else:
+            groups = m.groupdict()
+
+            indent = groups.get('indent', '')
+            replace_key = groups['replace_key']
+
+            return IndentLines(indent, replacement_map[replace_key])
+
+    return map(replace_line, lines)
+
