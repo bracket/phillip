@@ -1,22 +1,71 @@
 from collections import namedtuple
+
+import ctypes
 import functools
+import numpy as np
 
 memoize = functools.lru_cache()
 
-CType = namedtuple('CType', 'c_type signage numeric_type size')
-NumpyType = namedtuple('NumpyType', 'numpy_type signage numeric_type size')
+TypeName = namedtuple('TypeName', 'type_system type_name')
+TypeInfo = namedtuple('TypeInfo', 'signage numeric_type size')
 
-canonical_numpy_type_names = {
-    'float32', 'float64', 'float128',
-    'int8', 'int16', 'int32', 'int64',
-    'intp',
-    'uint8', 'uint16', 'uint32', 'uint64',
-}
+def extract_type_system(type_descriptor):
+    if isinstance(type_descriptor, TypeName):
+        return type_descriptor.type_system
+
+    module = type(type_descriptor).__module__
+
+    if module == 'numpy':
+        return 'numpy'
+
+    if module in ('ctypes', '_ctypes'):
+        return 'ctypes'
+
+
+def make_type_map(target_system):
+    type_systems = set(t.type_system for (t, _) in parse_raw_type_data())
+    inverse_map = make_inverse_map(target_system)
+
+    out = { }
+
+    for source_system in type_systems:
+        for t, type_info in get_type_info(source_system).items():
+            out[t] = inverse_map[type_info]
+
+    return out
+
+
+#TODO: Name this better
+def make_inverse_map(target_system):
+    from groupby import list_groupby
+
+    by_type_info = list_groupby(
+        (type_info, t)
+        for t, type_info in get_type_info(target_system).items()
+        if isinstance(t, TypeName) and t.type_system == target_system
+    )
+
+    sort_order = { t : i for i, (t, _) in enumerate(parse_raw_type_data()) }
+    
+    return {
+        type_info : min(types, key=sort_order.get)
+        for type_info, types
+        in by_type_info.items()
+    }
+
+
+def get_type_info(system):
+    if system == 'C':
+        return get_c_type_info()
+    elif system == 'numpy':
+        return get_numpy_type_info()
+    elif system == 'ctypes':
+        return get_ctypes_type_info()
+
 
 @memoize
 def get_c_type_info():
     from phillip.build import build_so
-    import ctypes
     import json
     import os
     import tempfile
@@ -24,8 +73,10 @@ def get_c_type_info():
     with tempfile.TemporaryDirectory() as tmpdir:
         source_path = os.path.join(str(tmpdir), 'sizeof.c')
 
-        with open(source_path, 'w') as out:
-            generate_sizeof_program(out)
+        source = generate_sizeof_program()
+
+        with open(source_path, 'w') as fd:
+            fd.write(source)
 
         so_path = build_so('__test__.sizeof', str(tmpdir), [ source_path ])
         lib = ctypes.cdll.LoadLibrary(so_path)
@@ -35,201 +86,149 @@ def get_c_type_info():
 
         js = json.loads(get_sizeofs().decode('utf-8'))
 
-        return { t.c_type : t for t in map(CType._make, js) }
+        out = { }
+
+        for entry in js:
+            t = TypeName._make(entry[:2])
+            type_info = TypeInfo._make(entry[2:])
+            out[t] = type_info
+
+        return out
 
 
 @memoize
 def get_numpy_type_info():
-    import numpy as np
+    dtype = np.dtype
 
-    numpy_types = get_raw_numpy_types()
+    out = { }
 
-    known_sizes = {
-        getattr(np, t.numpy_type) : t.size 
-        for t in numpy_types
-        if t.size is not None
-    }
+    for t, type_info in parse_raw_type_data():
+        if t.type_system != 'numpy':
+            continue
 
-    def get_size(np_type):
-        size = known_sizes.get(np_type, None)
-
-        if size is not None:
-            return size
-
+        np_type = getattr(np, t.type_name)
         x = np_type()
-        return x.itemsize
 
-    return {
-        r.numpy_type
-            : NumpyType(
-                r.numpy_type, r.signage, r.numeric_type,
-                get_size(getattr(np, r.numpy_type))
-            )
-        for r in numpy_types
-    }
+        type_info = TypeInfo(type_info.signage, type_info.numeric_type, x.itemsize)
 
+        out[t] = type_info
+        out[np_type] = type_info
+        out[dtype(np_type)] = type_info
 
-def numpy_to_ctype():
-    c_type_map = {
-        (t.signage, t.numeric_type, t.size) : t.c_type
-        for t in get_c_type_info().values()
-    }
-
-    return {
-        t.numpy_type : c_type_map[(t.signage, t.numeric_type, t.size)]
-        for t in get_numpy_type_info().values()
-    }
-
-
-def ctype_to_numpy():
-    numpy_map = {
-        (t.signage, t.numeric_type, t.size) : t.numpy_type
-        for t in get_numpy_type_info().values()
-        if t.numpy_type in canonical_numpy_type_names
-    }
-
-    return {
-        t.c_type : numpy_map[(t.signage, t.numeric_type, t.size)]
-        for t in get_c_type_info().values()
-    }
-
-
-def generate_sizeof_program(fd):
-    from phillip.generate import split_and_dedent_lines, render_indents, transform_lines
-
-    c_types = get_raw_c_types()
-
-    source = split_and_dedent_lines(r'''
-        #include <stdio.h>
-        #include <string.h>
-
-        char const * get_sizeofs() {
-            char buffer[8192];
-            char * out = buffer;
-
-            out += sprintf(out, "[\n");
-
-            {SIZEOF_STATEMENTS}
-
-            out += sprintf(out, "]\n");
-
-            return strdup(buffer);
-        }
-    ''')
-
-    sizeof_template = (
-        r'out += sprintf(out, "'
-        + r'    [ \"{type_name}\", \"{signage}\", \"{numeric_type}\", %lu ]{comma}'
-        + r'\n", sizeof({type_name}));'
-    )
-
-    last_index = len(c_types) - 1
-
-    def format_sizeof(p):
-        i, c_type = p
-        comma = ',' if i < last_index else ''
-
-        return sizeof_template.format(
-            type_name=c_type.c_type, signage=c_type.signage,
-            numeric_type=c_type.numeric_type, comma=comma
-        )
-
-    replacement_map = {
-        'SIZEOF_STATEMENTS' : 
-            [ format_sizeof(p) for p in enumerate(sorted(c_types)) ]
-    }
-
-    render_indents(fd, transform_lines(source, replacement_map))
+    return out
 
 
 @memoize
-def get_raw_c_types():
-    c_types_csv = r'''
-        char               | signed   | integer |
-        double             | signed   | float   |
-        float              | signed   | float   |
-        int                | signed   | integer |
-        long double        | signed   | float   |
-        long long          | signed   | integer |
-        short              | signed   | integer |
-        unsigned char      | unsigned | integer |
-        unsigned int       | unsigned | integer |
-        unsigned long long | unsigned | integer |
-        unsigned short     | unsigned | integer |
-        void *             | unsigned | pointer |
-    '''
+def get_ctypes_type_info():
+    from ctypes import sizeof
 
-    rows = [ row for row in map(str.strip, c_types_csv.splitlines()) if row ]
-    rows = [ CType._make(map(str.strip, row.split('|'))) for row in rows ]
+    out = { }
 
-    return rows
+    for t,type_info in parse_raw_type_data():
+        if t.type_system != 'ctypes':
+            continue
+
+        ctypes_type = getattr(ctypes, t.type_name)
+        type_info = TypeInfo(type_info.signage, type_info.numeric_type, sizeof(ctypes_type))
+
+        out[t] = type_info
+        out[ctypes_type] = type_info
+
+    return out
+
+
+def generate_sizeof_program():
+    from jinja2 import Environment, PackageLoader
+    import os
+
+    loader = PackageLoader('phillip', os.path.join('data', 'templates'))
+    env = Environment(loader=loader)
+
+    c_types = [ (t,p) for (t,p) in parse_raw_type_data() if t.type_system == 'C' ]
+
+    template = env.get_template('sizeof_program.cpp')
+    source = template.render(c_types=c_types)
+
+    return source
 
 
 @memoize
-def get_raw_numpy_types():
-    numpy_types_csv = r'''
-        bool_     | unsigned | integer | 
-        bool8     | unsigned | integer | 1
-        byte      | signed   | integer | 
-        short     | signed   | integer | 
-        intc      | signed   | integer | 
-        int_      | signed   | integer | 
-        longlong  | signed   | integer | 
-        intp      | unsigned | pointer | 
-        int8      | signed   | integer | 1
-        int16     | signed   | integer | 2
-        int32     | signed   | integer | 4
-        int64     | signed   | integer | 8
-        ubyte     | unsigned | integer | 
-        ushort    | unsigned | integer | 
-        uintc     | unsigned | integer | 
-        uint      | unsigned | integer | 
-        ulonglong | unsigned | integer | 
-        uintp     | unsigned | pointer | 
-        uint8     | unsigned | integer | 1
-        uint16    | unsigned | integer | 2
-        uint32    | unsigned | integer | 4
-        uint64    | unsigned | integer | 8
-        single    | signed   | float   | 
-        double    | signed   | float   | 
-        float_    | signed   | float   | 
-        longfloat | signed   | float   | 
-        float32   | signed   | float   | 4
-        float64   | signed   | float   | 8
-        float128  | signed   | float   | 16
-    '''
+def parse_raw_type_data():
+    rows = [ row for row in map(str.strip, RAW_TYPE_DATA_CSV.splitlines()) if row ]
+    rows = [ [ field.strip() for field in row.split('|') ] for row in rows ]
 
-    def make_numpy_type(row):
-        numpy_type, signage, numeric_type, size = map(str.strip, row.split('|'))
-
-        return NumpyType(
-            numpy_type, signage,
-            numeric_type, int(size) if size else None
-        )
-
-    rows = [ row for row in map(str.strip, numpy_types_csv.splitlines()) if row ]
-    rows = [ make_numpy_type(row) for row in rows ]
-
-    return rows
+    return [ (TypeName._make(row[:2]), TypeInfo._make(row[2:])) for row in rows ]
 
 
-# ctypes       | c_type             | python
-# c_bool       | bool               | bool
-# c_char       | char               | str
-# c_wchar      | wchar_t            | str
-# c_byte       | char               | int
-# c_ubyte      | unsigned char      | int
-# c_short      | short              | int
-# c_ushort     | unsigned short     | int
-# c_int        | int                | int
-# c_uint       | unsigned int       | int
-# c_long       | long               | int
-# c_ulong      | unsigned long      | int
-# c_longlong   | long long          | int
-# c_ulonglong  | unsigned long long | int
-# c_float      | float              | float
-# c_double     | double             | float
-# c_longdouble | long double        | float
-# c_char_p     | char *             | bytes
-# c_wchar_p    | wchar_t *          | str
-# c_void_p     | void *             | int or None
+# TODO: We can probably deduce signage and numeric_type as well (for Python based types anyway)
+
+# NOTE: Order reflects preference of type names when types are identical
+
+RAW_TYPE_DATA_CSV = r'''
+    C      | char               | signed   | integer |
+    C      | float              | signed   | float   |
+    C      | double             | signed   | float   |
+    C      | int                | signed   | integer |
+    C      | long double        | signed   | float   |
+    C      | short              | signed   | integer |
+    C      | long long          | signed   | integer |
+    C      | unsigned char      | unsigned | integer |
+    C      | unsigned int       | unsigned | integer |
+    C      | unsigned long long | unsigned | integer |
+    C      | unsigned short     | unsigned | integer |
+    ctypes | c_int8             | signed   | integer |
+    ctypes | c_int16            | signed   | integer |
+    ctypes | c_int32            | signed   | integer |
+    ctypes | c_int64            | signed   | integer |
+    ctypes | c_uint8            | unsigned | integer |
+    ctypes | c_uint16           | unsigned | integer |
+    ctypes | c_uint32           | unsigned | integer |
+    ctypes | c_uint64           | unsigned | integer |
+    ctypes | c_float            | signed   | float   |
+    ctypes | c_double           | signed   | float   |
+    ctypes | c_longdouble       | signed   | float   |
+    ctypes | c_bool             | unsigned | integer |
+    ctypes | c_byte             | signed   | integer |
+    ctypes | c_int              | signed   | integer |
+    ctypes | c_long             | signed   | integer |
+    ctypes | c_longlong         | signed   | integer |
+    ctypes | c_short            | signed   | integer |
+    ctypes | c_size_t           | unsigned | integer |
+    ctypes | c_ssize_t          | signed   | integer |
+    ctypes | c_ubyte            | unsigned | integer |
+    ctypes | c_uint             | unsigned | integer |
+    ctypes | c_ulong            | unsigned | integer |
+    ctypes | c_ulonglong        | unsigned | integer |
+    ctypes | c_ushort           | unsigned | integer |
+    numpy  | int8               | signed   | integer |
+    numpy  | int16              | signed   | integer |
+    numpy  | int32              | signed   | integer |
+    numpy  | int64              | signed   | integer |
+    numpy  | float32            | signed   | float   |
+    numpy  | float64            | signed   | float   |
+    numpy  | float128           | signed   | float   |
+    numpy  | uint8              | unsigned | integer |
+    numpy  | uint16             | unsigned | integer |
+    numpy  | uint32             | unsigned | integer |
+    numpy  | uint64             | unsigned | integer |
+    numpy  | bool8              | unsigned | integer |
+    numpy  | bool_              | unsigned | integer |
+    numpy  | byte               | signed   | integer |
+    numpy  | double             | signed   | float   |
+    numpy  | float_             | signed   | float   |
+    numpy  | int_               | signed   | integer |
+    numpy  | intc               | signed   | integer |
+    numpy  | longfloat          | signed   | float   |
+    numpy  | longlong           | signed   | integer |
+    numpy  | short              | signed   | integer |
+    numpy  | single             | signed   | float   |
+    numpy  | ubyte              | unsigned | integer |
+    numpy  | uint               | unsigned | integer |
+    numpy  | uintc              | unsigned | integer |
+    numpy  | ulonglong          | unsigned | integer |
+    numpy  | ushort             | unsigned | integer |
+'''
+
+#    C  | void * | unsigned | pointer | 
+# numpy | intp   | unsigned | pointer | 
+# numpy | uintp  | unsigned | pointer | 
