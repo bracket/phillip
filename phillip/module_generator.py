@@ -29,7 +29,7 @@ class Function(object):
             self.definition = definition
 
 
-    def render_arguments(self, with_names = True, with_types = True):
+    def render_arguments(self, with_names=True, with_types=True):
         templates = [ ]
 
         if with_types:
@@ -51,7 +51,7 @@ class Function(object):
         return ', '.join(variables)
 
 
-    def render_signature(self, with_names = True, with_types = True):
+    def render_signature(self, with_names=True, with_types=True):
         templates = [ ]
 
         if with_types:
@@ -83,7 +83,7 @@ class Function(object):
         name = 'c_' + self.name
 
         definition = 'return {call};'.format(
-            call = self.render_signature(with_names = True, with_types = False)
+            call = self.render_signature(with_names=True, with_types=False)
         )
 
         return Function(
@@ -105,6 +105,10 @@ class ModuleGenerator(object):
         self.interfaces = [ ]
 
         self.structure_generator = StructureGenerator()
+
+
+    def add_variable(self, variable):
+        self.variables.append(variable)
 
 
     def add_structure(self, type_definition, type_name = None):

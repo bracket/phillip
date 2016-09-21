@@ -2,6 +2,7 @@ from hashlib  import sha1
 from .typemap import TypeName, extract_type_system, make_type_map
 
 import ctypes
+import _ctypes
 import numpy as np
 import os
 
@@ -34,15 +35,22 @@ class StructureGenerator(object):
         if c_name is not None:
             return c_name
 
-        hash = sha1()
+        pointee = self.extract_pointee(type_descriptor)
 
-        for name, field in self.extract_subfields(type_descriptor):
-            hash.update(name.encode('utf-8'))
-            hash.update(b'\0')
-            hash.update(self.get_c_name(field).encode('utf-8'))
-            hash.update(b'\0')
+        if pointee:
+            c_name = '{} *'.format(self.get_c_name(pointee))
+        else:
+            hash = sha1()
 
-        c_name = 'struct_{}'.format(hash.hexdigest())
+            for name, field in self.extract_subfields(type_descriptor):
+                hash.update(name.encode('utf-8'))
+                hash.update(b'\0')
+                hash.update(self.get_c_name(field).encode('utf-8'))
+                hash.update(b'\0')
+
+            c_name = 'struct_{}'.format(hash.hexdigest())
+
+
         self.c_names[type_descriptor] = c_name
 
         return c_name
@@ -54,10 +62,15 @@ class StructureGenerator(object):
         if c_definition is not None:
             return c_definition
 
-        c_definition = tuple(
-            (name, self.get_c_name(field))
-            for name, field in self.extract_subfields(type_descriptor)
-        )
+        pointee = self.extract_pointee(type_descriptor)
+
+        if pointee:
+            c_definition = '{} *'.format(get_c_name(pointee))
+        else:
+            c_definition = tuple(
+                (name, self.get_c_name(field))
+                for name, field in self.extract_subfields(type_descriptor)
+            )
 
         self.c_definitions[type_descriptor] = c_definition
 
@@ -65,6 +78,9 @@ class StructureGenerator(object):
 
 
     def get_numpy_definition(self, type_descriptor):
+        if type_descriptor is None:
+            return None
+
         numpy_definition = self.numpy_definitions.get(type_descriptor)
 
         if numpy_definition is not None:
@@ -74,13 +90,18 @@ class StructureGenerator(object):
             self.numpy_definitions[type_descriptor] = type_descriptor
             return type_descriptor
 
-        numpy_definition = np.dtype(
-            [
-                (name, self.get_numpy_definition(field))
-                for name, field in self.extract_subfields(type_descriptor)
-            ],
-            align = True
-        )
+        pointee = self.extract_pointee(type_descriptor)
+
+        if pointee:
+            numpy_definition = np.dtype(np.uintp)
+        else:
+            numpy_definition = np.dtype(
+                [
+                    (name, self.get_numpy_definition(field))
+                    for name, field in self.extract_subfields(type_descriptor)
+                ],
+                align = True
+            )
 
         self.numpy_definitions[type_descriptor] = numpy_definition
 
@@ -88,22 +109,30 @@ class StructureGenerator(object):
 
 
     def get_ctypes_definition(self, type_descriptor):
+        if type_descriptor is None:
+            return None
+
         ctypes_definition = self.ctypes_definitions.get(type_descriptor)
 
         if ctypes_definition is not None:
             return ctypes_definition
 
-        ctypes_definition = type(
-            '',
-            ( ctypes.Structure, ),
-            {
-                'type_descriptor' : type_descriptor,
-                '_fields_' :  [
-                    (name, self.get_ctypes_definition(field))
-                    for name, field in self.extract_subfields(type_descriptor)
-                ]
-            }
-        )
+        pointee = self.extract_pointee(type_descriptor)
+
+        if pointee:
+            ctypes_definition = ctypes.POINTER(self.get_ctypes_definition(pointee))
+        else:
+            ctypes_definition = type(
+                '',
+                ( ctypes.Structure, ),
+                {
+                    'type_descriptor' : type_descriptor,
+                    '_fields_' :  [
+                        (name, self.get_ctypes_definition(field))
+                        for name, field in self.extract_subfields(type_descriptor)
+                    ]
+                }
+            )
 
         self.ctypes_definitions[type_descriptor] = ctypes_definition
 
@@ -124,11 +153,10 @@ class StructureGenerator(object):
                 return ((name, fields[name][0]) for name in names)
 
         elif type_system == 'ctypes':
-            try:
-                if not issubclass(type_descriptor, ctypes.Structure):
+            module =  type(type_descriptor).__module__
+
+            if module not in ('_ctypes', 'ctypes'):
                     type_descriptor = self.ctypes_definitions.get(type_descriptor)
-            except TypeError:
-                pass
 
             try:
                 if issubclass(type_descriptor, ctypes.Structure):
@@ -143,6 +171,31 @@ class StructureGenerator(object):
                 return fields
 
 
+    def extract_pointee(self, type_descriptor):
+        type_system = extract_type_system(type_descriptor)
+
+        if type_system == 'numpy':
+            pass
+
+        elif type_system == 'ctypes':
+            module = type(type_descriptor).__module__
+
+            if module not in ('_ctypes', 'ctypes'):
+                type_descriptor = self.ctypes_definitions.get(type_descriptor)
+
+            try:
+                if issubclass(type_descriptor, _ctypes._Pointer):
+                    return type_descriptor._type_
+            except:
+                pass
+
+        elif type_system == 'C':
+            m = cpp_type_re.match(type_descriptor.type_name)
+
+            if m.group('pointer'):
+                return TypeName('C', m.group()[:m.start('pointer')])
+
+
     def render_structures(self, type_descriptor):
         from jinja2 import Environment, PackageLoader
 
@@ -154,7 +207,7 @@ class StructureGenerator(object):
         subtypes = [ ]
         self.visit_subtypes(type_descriptor, subtypes.append)
 
-        subtypes = [ t for t in reversed(subtypes) if self.extract_subfields(t) ] 
+        subtypes = [ t for t in reversed(subtypes) if self.extract_subfields(t) ]
 
         return [
             template.render(c_name = self.get_c_name(t), fields = self.get_c_definition(t))
@@ -200,7 +253,7 @@ class StructureGenerator(object):
 
         if height is not None:
             return height
-        
+
         fields = self.extract_subfields(type_descriptor)
 
         if fields is None:
@@ -233,6 +286,7 @@ def initial_numpy_definitions():
         for s, t in make_type_map('numpy').items()
     }
 
+    out[None]  = None
     out[bool]  = out[np.bool_]
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
@@ -246,8 +300,32 @@ def initial_ctypes_definitions():
         for s, t in make_type_map('ctypes').items()
     }
 
+    out[None]  = None
     out[bool]  = out[np.bool_]
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
 
     return out
+
+
+def cpp_type_grammar():
+    import re
+
+    g = { }
+
+    g['ws']         = r'(?:[ \f\t]+)'
+    g['identifier'] = r'(?:[_a-zA-Z][_a-zA-Z0-9]*)'
+
+    g['left_const']  = r'(?:const{ws}{identifier})'.format(**g)
+    g['right_const'] = r'(?:{identifier}{ws}const)'.format(**g)
+    g['base_type']    = r'(?P<base_type>{left_const}|{right_const}|{identifier})'.format(**g)
+
+    g['pointer']    = r'(?:\*(?:{ws}const)?)'.format(**g)
+    g['full_type']  = r'{base_type}(?P<pointer>{ws}{pointer})*'.format(**g)
+
+    for production, rule in g.items():
+        g[production] = re.compile(rule)
+
+    return g
+
+cpp_type_re = cpp_type_grammar()['full_type']
