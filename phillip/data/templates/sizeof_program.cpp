@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <string.h>
 
-char const * get_sizeofs() {
-    char buffer[16384];
-    char * out = buffer;
+char buffer[16 * 1024];
 
+char const * get_sizeofs() {
+    char * out = buffer;
 
     out += sprintf(out, "[\n");
 

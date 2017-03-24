@@ -46,7 +46,7 @@ def make_inverse_map(target_system):
     )
 
     sort_order = { t : i for i, (t, _) in enumerate(parse_raw_type_data()) }
-    
+
     return {
         type_info : min(types, key=sort_order.get)
         for type_info, types
@@ -65,7 +65,7 @@ def get_type_info(system):
 
 @memoize
 def get_c_type_info():
-    from phillip.build import build_so
+    from phillip.build import build_so, generate_extension_args, load_library, unload_library
     import json
     import os
     import tempfile
@@ -78,13 +78,16 @@ def get_c_type_info():
         with open(source_path, 'w') as fd:
             fd.write(source)
 
-        so_path = build_so('__test__.sizeof', str(tmpdir), [ source_path ])
-        lib = ctypes.cdll.LoadLibrary(so_path)
+        extension_args = generate_extension_args([ 'get_sizeofs' ])
+
+        so_path = build_so('__test__.sizeof', str(tmpdir), [ source_path ], extension_args)
+        lib = load_library(so_path)
 
         get_sizeofs = lib['get_sizeofs']
         get_sizeofs.restype = ctypes.c_char_p
 
         js = json.loads(get_sizeofs().decode('utf-8'))
+        unload_library(lib)
 
         out = { }
 
@@ -106,7 +109,11 @@ def get_numpy_type_info():
         if t.type_system != 'numpy':
             continue
 
-        np_type = getattr(np, t.type_name)
+        np_type = getattr(np, t.type_name, None)
+
+        if np_type is None:
+            continue
+
         x = np_type()
 
         type_info = TypeInfo(type_info.signage, type_info.numeric_type, x.itemsize)
@@ -229,6 +236,6 @@ RAW_TYPE_DATA_CSV = r'''
     numpy  | ushort             | unsigned | integer |
 '''
 
-#    C  | void * | unsigned | pointer | 
-# numpy | intp   | unsigned | pointer | 
-# numpy | uintp  | unsigned | pointer | 
+#    C  | void * | unsigned | pointer |
+# numpy | intp   | unsigned | pointer |
+# numpy | uintp  | unsigned | pointer |

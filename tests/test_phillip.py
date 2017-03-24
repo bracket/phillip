@@ -1,8 +1,8 @@
 import os
-import phillip
+from phillip.build import *
+
 
 def test_build(tmpdir):
-    from phillip.build import build_so
     import ctypes
 
     source = r'''
@@ -16,9 +16,11 @@ def test_build(tmpdir):
     with open(source_path, 'w') as out:
         out.write(source)
 
-    so_path = build_so('__test__.build', str(tmpdir), [ source_path ])
+    extension_args = generate_extension_args([ 'test_function' ])
 
-    lib = ctypes.cdll.LoadLibrary(so_path)
+    so_path = build_so('__test__.build', str(tmpdir), [ source_path ], extension_args)
+
+    lib = load_library(so_path)
 
     test = lib['test_function']
     test.restype = ctypes.c_int
@@ -53,7 +55,6 @@ def test_typemap():
 def test_render_numpy_structure(tmpdir):
     import numpy as np
     from phillip.structure_generator import StructureGenerator
-    from phillip.build import build_so
 
     inner_type = np.dtype([
             ('weasel', np.int),
@@ -78,13 +79,14 @@ def test_render_numpy_structure(tmpdir):
     with open(source_path, 'w') as out:
         out.write(source)
 
-    so_path = build_so('__test__.build', str(tmpdir), [ source_path ])
+    extension_args = generate_extension_args()
+
+    so_path = build_so('__test__.build', str(tmpdir), [ source_path ], extension_args)
 
 
 def test_render_ctypes_structure(tmpdir):
     import ctypes
     from phillip.structure_generator import StructureGenerator
-    from phillip.build import build_so
 
     class InnerType(ctypes.Structure):
         _fields_ = [
@@ -112,4 +114,6 @@ def test_render_ctypes_structure(tmpdir):
     with open(source_path, 'w') as fd:
         fd.write(source)
 
-    so_path = build_so('__test__.build', str(tmpdir), [ source_path ])
+    extension_args = generate_extension_args()
+
+    so_path = build_so('__test__.build', str(tmpdir), [ source_path ], extension_args)

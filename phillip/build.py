@@ -1,4 +1,32 @@
+import ctypes
 import os
+import sys
+
+__all__ = [
+    'build_so',
+    'generate_extension_args',
+    'load_library',
+    'unload_library',
+]
+
+
+def load_library(path):
+    if sys.platform in ('linux', 'linux2', 'darwin'):
+        return ctypes.cdll.LoadLibrary(path)
+    elif sys.platform == 'win32':
+        return ctypes.windll.LoadLibrary(path)
+
+
+def unload_library(lib):
+    handle = ctypes.c_ulonglong(lib._handle)
+
+    if sys.platform in ('linux', 'linux2', 'darwin'):
+        pass # TODO: Care about this
+    elif sys.platform == 'win32':
+        del lib
+        while ctypes.windll.kernel32.FreeLibrary(handle):
+            pass
+
 
 def build_so(module_name, target_dir, sources, extension_args={ }, setup_args=None):
     from distutils.dist import Distribution
@@ -45,7 +73,7 @@ def build_so(module_name, target_dir, sources, extension_args={ }, setup_args=No
 
     if os.path.isfile(target_path):
         os.unlink(target_path)
-    
+
     copy2(so_path, target_path)
 
     return target_path
@@ -65,3 +93,21 @@ def generate_setup_args(setup_args=None):
     setup_args['script_args'] = args + script_args
 
     return setup_args
+
+
+class LyingList(list):
+    def __contains__(self, value):
+        if isinstance(value, str) and value.startswith('PyInit_'):
+            return True
+        else:
+            return value in super(self)
+
+
+    def __bool__(self):
+        return True
+
+
+def generate_extension_args(export_symbols=[]):
+    return {
+        'export_symbols' : LyingList(export_symbols)
+    }

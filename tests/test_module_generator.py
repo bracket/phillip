@@ -3,7 +3,7 @@ import os
 
 def test_generate_module(tmpdir):
     from phillip.module_generator import Function, ModuleGenerator, Variable
-    from phillip.build import build_so
+    from phillip.build import build_so, generate_extension_args
 
     position_type = np.dtype([
         ('x', np.float32),
@@ -67,4 +67,7 @@ def test_generate_module(tmpdir):
     with open(source_path, 'w') as fd:
         fd.write(source)
 
-    so_path = build_so('__test__.build', str(tmpdir), [ source_path ])
+    extension_arguments = generate_extension_args()
+    extension_arguments['export_symbols'].extend(f.name for f in generator.interfaces)
+
+    so_path = build_so('__test__.build', str(tmpdir), [ source_path ], extension_arguments)
