@@ -4,7 +4,7 @@ import ctypes
 import functools
 import numpy as np
 
-memoize = functools.lru_cache()
+memoize = functools.lru_cache(None)
 
 TypeName = namedtuple('TypeName', 'type_system type_name')
 TypeInfo = namedtuple('TypeInfo', 'signage numeric_type size')

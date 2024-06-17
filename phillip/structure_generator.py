@@ -214,6 +214,7 @@ class StructureGenerator(object):
             for t in subtypes
         ]
 
+
     def visit_subtypes(self, type_descriptor, f):
         f(type_descriptor)
 
