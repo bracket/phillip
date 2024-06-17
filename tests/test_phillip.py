@@ -57,8 +57,8 @@ def test_render_numpy_structure(tmpdir):
     from phillip.structure_generator import StructureGenerator
 
     inner_type = np.dtype([
-            ('weasel', np.int),
-            ('beaver', np.int)
+            ('weasel', np.int_),
+            ('beaver', np.int_)
         ],
         align=True
     )

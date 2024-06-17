@@ -218,7 +218,6 @@ RAW_TYPE_DATA_CSV = r'''
     numpy  | uint16             | unsigned | integer |
     numpy  | uint32             | unsigned | integer |
     numpy  | uint64             | unsigned | integer |
-    numpy  | bool8              | unsigned | integer |
     numpy  | bool_              | unsigned | integer |
     numpy  | byte               | signed   | integer |
     numpy  | double             | signed   | float   |
