@@ -14,6 +14,7 @@ def extract_type_system(type_descriptor):
         return type_descriptor.type_system
 
     module = type(type_descriptor).__module__
+    module = module.split('.')[0]
 
     if module == 'numpy':
         return 'numpy'
