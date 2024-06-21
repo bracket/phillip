@@ -1,5 +1,6 @@
 from hashlib  import sha1
 from .typemap import TypeName, extract_type_system, make_type_map
+from .sized_array import SizedArray, CTypesSizedArray
 
 import ctypes
 import _ctypes
@@ -170,6 +171,12 @@ class StructureGenerator(object):
             if isinstance(fields, tuple):
                 return fields
 
+        else:
+            try:
+                return type_descriptor.__annotations__.items()
+            except AttributeError:
+                pass
+
 
     def extract_pointee(self, type_descriptor):
         type_system = extract_type_system(type_descriptor)
@@ -277,6 +284,7 @@ def initial_c_names():
     out[bool]  = out[np.bool_]
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
+    out[str]   = 'SizedArray'
 
     return out
 
@@ -292,6 +300,14 @@ def initial_numpy_definitions():
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
 
+    out[str] = np.dtype(
+        [
+            ('data', np.uintp),
+            ('length', np.int_),
+        ],
+        align = True
+    )
+
     return out
 
 
@@ -305,6 +321,7 @@ def initial_ctypes_definitions():
     out[bool]  = out[np.bool_]
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
+    out[str]   = CTypesSizedArray
 
     return out
 

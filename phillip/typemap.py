@@ -22,6 +22,8 @@ def extract_type_system(type_descriptor):
     if module in ('ctypes', '_ctypes'):
         return 'ctypes'
 
+    return 'python'
+
 
 def make_type_map(target_system):
     type_systems = set(t.type_system for (t, _) in parse_raw_type_data())
