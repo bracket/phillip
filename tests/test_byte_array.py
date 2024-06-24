@@ -5,7 +5,7 @@ from phillip.byte_array import *
 from phillip.structure_generator import *
 from phillip.build import *
 
-def test_pass_sized_array(tmpdir):
+def test_pass_byte_array(tmpdir):
     source = r'''
         #include <stdio.h>
 
