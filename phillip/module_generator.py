@@ -95,7 +95,6 @@ class Function(object):
         )
 
 
-
 class ModuleGenerator(object):
     def __init__(self):
         self.headers = [ ]

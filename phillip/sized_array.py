@@ -11,17 +11,21 @@ class CTypesSizedArray(ctypes.Structure):
 
 
 class SizedArray:
-    def __init__(self, array):
-        if not isinstance(array, bytearray):
-            array = bytearray(array)
+    data: bytearray
+    length: int
 
-        self.array = array
+    def __init__(self, data):
+        if not isinstance(data, bytearray):
+            data = bytearray(data)
+
+        self.data = data
+        self.length = len(data)
 
         
     @cached_property
     def ctypes_buffer(self):
         ctypes_type = ctypes.c_ubyte * 1
-        return ctypes_type.from_buffer(self.array)
+        return ctypes_type.from_buffer(self.data)
 
 
     @cached_property
@@ -33,5 +37,5 @@ class SizedArray:
     def ctypes_instance(self):
         return CTypesSizedArray(
             self.ctypes_pointer,
-            len(self.array)
+            len(self.data)
         )
