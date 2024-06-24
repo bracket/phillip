@@ -1,7 +1,7 @@
 from pprint import pprint
 import ctypes
 
-from phillip.sized_array import *
+from phillip.byte_array import *
 from phillip.structure_generator import *
 from phillip.build import *
 
@@ -12,9 +12,9 @@ def test_pass_sized_array(tmpdir):
         typedef struct {
             unsigned char * data;
             int length;
-        } SizedArray;
+        } ByteArray;
 
-        int test_function(SizedArray s) {
+        int test_function(ByteArray s) {
             char const * expected = "weasel";
             int matching = 0;
 
@@ -37,10 +37,10 @@ def test_pass_sized_array(tmpdir):
 
     lib = load_library(so_path)
 
-    array = SizedArray(b'weasel')
+    array = ByteArray(b'weasel')
 
     test = lib['test_function']
-    test.argtypes = [ CTypesSizedArray ]
+    test.argtypes = [ CTypesByteArray ]
     test.restype = ctypes.c_int
 
     value = test(array.ctypes_instance)

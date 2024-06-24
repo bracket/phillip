@@ -27,5 +27,5 @@ def test_annotations():
 
     assert generator.get_c_name(User) == 'User'
 
-    expected = { 'user_id' : 'long long', 'name' : 'SizedArray' }
+    expected = { 'user_id' : 'long long', 'name' : 'ByteArray' }
     assert dict(generator.get_c_definition(User)) == expected

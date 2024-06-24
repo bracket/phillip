@@ -1,6 +1,6 @@
 from hashlib  import sha1
 from .typemap import TypeName, extract_type_system, make_type_map
-from .sized_array import SizedArray, CTypesSizedArray
+from .byte_array import ByteArray, CTypesByteArray
 
 import ctypes
 import _ctypes
@@ -280,11 +280,12 @@ def initial_c_names():
         for s, t in make_type_map('C').items()
     }
 
-    out[None]  = 'void'
-    out[bool]  = out[np.bool_]
-    out[int]   = out[np.int_]
-    out[float] = out[np.float_]
-    out[str]   = 'SizedArray'
+    out[None]      = 'void'
+    out[bool]      = out[np.bool_]
+    out[int]       = out[np.int_]
+    out[float]     = out[np.float_]
+    out[str]       = 'ByteArray'
+    out[bytearray] = 'ByteArray'
 
     return out
 
@@ -300,13 +301,16 @@ def initial_numpy_definitions():
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
 
-    out[str] = np.dtype(
+    np_byte_array = np.dtype(
         [
             ('data', np.uintp),
             ('length', np.int_),
         ],
         align = True
     )
+
+    out[str]       = np_byte_array
+    out[bytearray] = np_byte_array
 
     return out
 
@@ -321,7 +325,8 @@ def initial_ctypes_definitions():
     out[bool]  = out[np.bool_]
     out[int]   = out[np.int_]
     out[float] = out[np.float_]
-    out[str]   = CTypesSizedArray
+    out[str]   = CTypesByteArray
+    out[str]   = CTypesByteArray
 
     return out
 

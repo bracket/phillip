@@ -3,14 +3,14 @@ from functools import cached_property
 
 c_ubyte_p = ctypes.POINTER(ctypes.c_ubyte)
 
-class CTypesSizedArray(ctypes.Structure):
+class CTypesByteArray(ctypes.Structure):
     _fields_ = [
         ("data", c_ubyte_p),
         ("length", ctypes.c_int),
     ]
 
 
-class SizedArray:
+class ByteArray:
     data: bytearray
     length: int
 
@@ -35,7 +35,7 @@ class SizedArray:
 
     @cached_property
     def ctypes_instance(self):
-        return CTypesSizedArray(
+        return CTypesByteArray(
             self.ctypes_pointer,
             len(self.data)
         )
