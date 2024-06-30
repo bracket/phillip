@@ -34,7 +34,7 @@ class Function(object):
 
         if with_types:
             templates.append('{type}')
-        
+
         if with_names:
             templates.append('{name}')
 
@@ -56,7 +56,7 @@ class Function(object):
 
         if with_types:
             templates.append('{type}')
-        
+
         if with_names:
             templates.append('{name}')
 
@@ -68,7 +68,7 @@ class Function(object):
             arguments = self.render_arguments(with_names, with_types),
         )
 
-    
+
     def render_definition(self):
         fd = io.StringIO()
         render_indents(fd, self.definition, indent='    ')
@@ -79,8 +79,9 @@ class Function(object):
         )
 
 
-    def generate_default_interface(self):
-        name = 'c_' + self.name
+    def generate_default_interface(self, name=None):
+        if name is None:
+            name = 'c_' + self.name
 
         definition = 'return {call};'.format(
             call = self.render_signature(with_names=True, with_types=False)
@@ -95,13 +96,18 @@ class Function(object):
         )
 
 
+Header = namedtuple('Header', 'name module_only')
+
 class ModuleGenerator(object):
-    def __init__(self):
-        self.headers = [ ]
+    def __init__(self, header_name = None):
+        self.header_name = header_name
+
+        self.headers = { }
         self.structures = [ ]
         self.variables = [ ]
         self.functions = [ ]
         self.interfaces = [ ]
+
 
         self.structure_generator = StructureGenerator()
 
@@ -117,12 +123,25 @@ class ModuleGenerator(object):
             self.structure_generator.rename(type_definition, type_name)
 
 
-    def add_function(self, name = '', return_type = None, arguments = None, definition = ''):
+    def add_header(self, name, module_only = True):
+        header = Header(name, module_only)
+        self.headers[header.name] = header
+
+
+    def make_function(self, name = '', return_type = None, arguments = None, definition = ''):
+        if isinstance(name, Function):
+            return name
+
         f = Function(
             self.structure_generator,
             name, return_type, arguments, definition
         )
 
+        return f
+
+
+    def add_function(self, name = '', return_type = None, arguments = None, definition = ''):
+        f = self.make_function(name, return_type, arguments, definition)
         self.functions.append(f)
 
         return f
@@ -130,7 +149,7 @@ class ModuleGenerator(object):
 
     def add_interface(self, interface):
         self.interfaces.append(interface)
-        
+
 
     def render_module(self):
         from jinja2 import Environment, PackageLoader
@@ -140,9 +159,15 @@ class ModuleGenerator(object):
 
         template = env.get_template('module_template.cpp')
 
-        headers = sorted(self.headers)
+        headers = [ header.name for header in self.headers.values() ]
 
-        structures = self.render_structures()
+        if self.header_name and self.header_name not in headers:
+            headers = [ self.header_name ] + headers
+
+        if self.header_name:
+            structures = [ ]
+        else:
+            structures = self.render_structures()
 
         variable_declarations = [
             self.render_variable_declaration(variable)
@@ -155,21 +180,49 @@ class ModuleGenerator(object):
             function.render_definition()
             for function in self.functions
         ]
-        
+
         interfaces = [
             interface.render_definition()
             for interface in self.interfaces
         ]
 
         return template.render(
-            headers = headers,
-            structures = structures,
+            headers               = headers,
+            structures            = structures,
             variable_declarations = variable_declarations,
-            functions = functions,
+            functions             = functions,
+            interfaces            = interfaces,
+        )
+
+
+    def render_header(self):
+        from jinja2 import Environment, PackageLoader
+
+        loader = PackageLoader('phillip', os.path.join('data', 'templates'))
+        env = Environment(loader = loader)
+
+        template = env.get_template('header_template.hpp')
+
+        headers = [
+            header.name
+            for header in self.headers.values()
+            if not header.module_only
+        ]
+
+        structures = self.render_structures()
+
+        interfaces = [
+            '{};'.format(interface.render_signature())
+            for interface in self.interfaces
+        ]
+
+        return template.render(
+            headers    = headers,
+            structures = structures,
             interfaces = interfaces,
         )
 
-    
+
     def render_structures(self):
         structures = { }
         current_structure = 0
@@ -214,6 +267,30 @@ class ModuleGenerator(object):
             name = variable.name,
             init = init
         )
+
+
+    def generate(self, lib):
+        sg = self.structure_generator
+
+        out = { }
+
+        for interface in self.interfaces:
+            f = lib[interface.name]
+
+            restype = sg.get_ctypes_definition(interface.return_type)
+
+            argtypes = [
+                sg.get_ctypes_definition(arg.type)
+                for arg in interface.arguments
+            ]
+
+            f.restype = restype
+            f.argtypes = argtypes
+
+            out[interface.name] = f
+
+        return out
+
 
 space_re = re.compile(r'\s*')
 

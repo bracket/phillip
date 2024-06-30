@@ -285,6 +285,7 @@ def initial_c_names():
     out[int]       = out[np.int_]
     out[float]     = out[np.float_]
     out[str]       = 'ByteArray'
+    out[bytes]     = 'ByteArray'
     out[bytearray] = 'ByteArray'
 
     return out
@@ -310,6 +311,7 @@ def initial_numpy_definitions():
     )
 
     out[str]       = np_byte_array
+    out[bytes]     = np_byte_array
     out[bytearray] = np_byte_array
 
     return out
@@ -321,12 +323,13 @@ def initial_ctypes_definitions():
         for s, t in make_type_map('ctypes').items()
     }
 
-    out[None]  = None
-    out[bool]  = out[np.bool_]
-    out[int]   = out[np.int_]
-    out[float] = out[np.float_]
-    out[str]   = CTypesByteArray
-    out[str]   = CTypesByteArray
+    out[None]      = None
+    out[bool]      = out[np.bool_]
+    out[int]       = out[np.int_]
+    out[float]     = out[np.float_]
+    out[str]       = CTypesByteArray
+    out[bytes]     = CTypesByteArray
+    out[bytearray] = CTypesByteArray
 
     return out
 

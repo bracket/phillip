@@ -5,20 +5,21 @@ from phillip.byte_array import *
 from phillip.structure_generator import *
 from phillip.build import *
 
+
 def test_pass_byte_array(tmpdir):
     source = r'''
         #include <stdio.h>
 
         typedef struct {
             unsigned char * data;
-            int length;
+            int size;
         } ByteArray;
 
         int test_function(ByteArray s) {
             char const * expected = "weasel";
             int matching = 0;
 
-            for (; matching < s.length; ++matching) {
+            for (; matching < s.size; ++matching) {
                 if (s.data[matching] != expected[matching])
                     { break; }
             }
@@ -46,3 +47,12 @@ def test_pass_byte_array(tmpdir):
     value = test(array.ctypes_instance)
 
     assert value == 6
+
+
+def test_byte_array_module(tmpdir):
+    from phillip.byte_array import byte_array_module
+
+    module = byte_array_module()
+
+    array = module['byte_array_alloc'](7)
+    module['byte_array_free'](array)
