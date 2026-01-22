@@ -40,7 +40,18 @@ def make_type_map(target_system):
 
 #TODO: Name this better
 def make_inverse_map(target_system):
-    from groupby import list_groupby
+    from itertools import groupby
+    from operator import itemgetter
+
+    # Inline implementation of list_groupby
+    def list_groupby(iterable):
+        """Groups items by their first element, returns dict with lists of second elements"""
+        items = list(iterable)
+        items.sort(key=itemgetter(0))
+        result = {}
+        for key, group in groupby(items, key=itemgetter(0)):
+            result[key] = [item[1] for item in group]
+        return result
 
     by_type_info = list_groupby(
         (type_info, t)
