@@ -29,9 +29,8 @@ def unload_library(lib):
 
 
 def build_so(module_name, target_dir, sources, extension_args={ }, setup_args=None):
-    from distutils.dist import Distribution
-    from distutils.errors import DistutilsArgError
-    from distutils.extension import Extension
+    from setuptools import Distribution, Extension
+    from setuptools.errors import SetupError
     from shutil import copy2
 
     setup_args = generate_setup_args(setup_args)
@@ -57,7 +56,7 @@ def build_so(module_name, target_dir, sources, extension_args={ }, setup_args=No
 
     try:
         ok = dist.parse_command_line()
-    except DistutilsArgError:
+    except SetupError:
         raise
 
     if not ok:
