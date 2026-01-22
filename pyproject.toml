@@ -7,20 +7,14 @@ name = "phillip"
 version = "0.1.0"
 description = "Generate and compile C/C++ from numpy/ctypes"
 readme = "README.md"
-requires-python = ">=3.6"
+requires-python = ">=3.7"
 license = {text = "MIT"}
 authors = [
     {name = "Stephen [Bracket] McCray", email = "mcbracket@gmail.com"}
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Programming Language :: Python :: 2",
-    "Programming Language :: Python :: 2.6",
-    "Programming Language :: Python :: 2.7",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.3",
-    "Programming Language :: Python :: 3.4",
-    "Programming Language :: Python :: 3.6",
     "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
