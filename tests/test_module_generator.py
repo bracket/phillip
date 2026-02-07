@@ -27,7 +27,8 @@ def test_generate_module(tmpdir):
     generator = ModuleGenerator()
 
     headers = [ '<vector>', '<cmath>' ]
-    generator.headers.extend(headers)
+    for header in headers:
+        generator.add_header(header)
 
     generator.add_structure(position_type, 'Position')
     generator.add_structure(color_type, 'Color')

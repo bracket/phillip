@@ -282,8 +282,8 @@ def initial_c_names():
 
     out[None]      = 'void'
     out[bool]      = out[np.bool_]
-    out[int]       = out[np.int_]
-    out[float]     = out[np.float_]
+    out[int]       = out[np.int64]
+    out[float]     = out[np.float64]
     out[str]       = 'ByteArray'
     out[bytes]     = 'ByteArray'
     out[bytearray] = 'ByteArray'
@@ -299,13 +299,13 @@ def initial_numpy_definitions():
 
     out[None]  = None
     out[bool]  = out[np.bool_]
-    out[int]   = out[np.int_]
-    out[float] = out[np.float_]
+    out[int]   = out[np.int64]
+    out[float] = out[np.float64]
 
     np_byte_array = np.dtype(
         [
             ('data', np.uintp),
-            ('length', np.int_),
+            ('length', np.int64),
         ],
         align = True
     )
@@ -325,8 +325,8 @@ def initial_ctypes_definitions():
 
     out[None]      = None
     out[bool]      = out[np.bool_]
-    out[int]       = out[np.int_]
-    out[float]     = out[np.float_]
+    out[int]       = out[np.int64]
+    out[float]     = out[np.float64]
     out[str]       = CTypesByteArray
     out[bytes]     = CTypesByteArray
     out[bytearray] = CTypesByteArray
